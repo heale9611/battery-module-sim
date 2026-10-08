@@ -60,10 +60,10 @@
 **Interfaces:**
 - `SimulationClock.setPaused(paused: boolean): void`.
 - `SimulationClock.advance(realDeltaSeconds: number): number`: 暂停或无效负增量返回 `0`；运行时将单次增量限制到 `0.05` 秒。
-- `SimulationSnapshot`: `{ elapsedSeconds: number; deltaSeconds: number; paused: boolean; robot: RobotSnapshot; inspection: InspectionSnapshot; module: ModuleSnapshot; vehicles: readonly VehicleSnapshot[]; alarms: readonly AlarmSnapshot[] }`.
+- `SimulationSnapshot`: `{ elapsedSeconds: number; deltaSeconds: number; paused: boolean; productionCount: number; robot: RobotSnapshot; inspection: InspectionSnapshot; module: ModuleSnapshot; vehicles: readonly VehicleSnapshot[]; alarms: readonly AlarmSnapshot[] }`.
 - `RobotPhase = "waiting" | "grasping" | "transporting" | "placing" | "returning"`.
 - `InspectionPhase = "clamping" | "probing" | "testing" | "feedback"`.
-- `RobotSnapshot`: `{ phase: RobotPhase; progress: number; holdingPartId: string | null }`.
+- `RobotSnapshot`: `{ phase: RobotPhase; progress: number; holdingPartId: string | null; completedCycles: number }`.
 - `InspectionSnapshot`: `{ phase: InspectionPhase; progress: number; result: "pending" | "pass" | "fail" }`.
 - `VehicleSnapshot`: `{ id: string; edgeId: string; progress: number; speed: number; faulted: boolean }`.
 - `AlarmSnapshot`: `{ id: string; severity: "warning" | "critical"; message: string; sourceId: string }`.
@@ -113,7 +113,7 @@ git commit -m "feat: add simulation clock and state types" -m "Co-authored-by: C
 
 - [ ] **Step 1: Write failing tests for phase order, held workpiece and module controls**
 
-Advance `RobotCycle` using small increments and assert order `waiting → grasping → transporting → placing → returning → waiting`. Assert `holdingPartId` becomes non-null only after grasp and returns to null at placement; completing two cycles yields two acquisitions and two releases. For the rig, assert the workpiece is a child of the gripper while `holdingPartId` is set and is reparented to the placement group on release. For the module, assert explosion changes layer offsets without changing part identity and hidden parts set `visible === false`.
+Advance `RobotCycle` using small increments and assert order `waiting → grasping → transporting → placing → returning → waiting`. Assert `holdingPartId` becomes non-null only after grasp and returns to null at placement; completing two cycles yields two acquisitions, two releases and `completedCycles === 2` (increment once when placement completes). For the rig, assert the workpiece is a child of the gripper while `holdingPartId` is set and is reparented to the placement group on release. For the module, assert explosion changes layer offsets without changing part identity and hidden parts set `visible === false`.
 
 - [ ] **Step 2: Run tests and verify they fail**
 
@@ -206,7 +206,7 @@ Expected: FAIL because traffic network definitions and validator do not exist.
 
 - [ ] **Step 3: Implement route graph and mutex-style intersection reservations**
 
-Define explicit waypoint coordinates matching Task 1 and the overview layout, each with `y=0`: a one-way perimeter loop NW `(-74,48)` → NE `(74,48)` → SE `(74,-52)` → SW `(-74,-52)` → NW, plus short service-pad spokes to warehouse `(-70,-15)`, yard `(70,-15)`, plant entrance `(-34,12)`, and port dock `(0,-50)`. Validate every segment against the four facility rectangles. Grant a junction to at most one vehicle; only the matching vehicle releases its reservation.
+Define explicit waypoint coordinates matching the overview plan's Task 2 layout, each with `y=0`: a one-way perimeter loop NW `(-74,48)` → NE `(74,48)` → SE `(74,-52)` → SW `(-74,-52)` → NW, plus short service-pad spokes to warehouse `(-70,-15)`, yard `(70,-15)`, plant entrance `(-34,12)`, and port dock `(0,-50)`. Validate every segment against the four facility rectangles. Grant a junction to at most one vehicle; only the matching vehicle releases its reservation.
 
 - [ ] **Step 4: Write failing vehicle spacing, collision, fault and junction-pause tests**
 
@@ -292,7 +292,7 @@ git commit -m "feat: add guided facility camera tour" -m "Co-authored-by: Copilo
 
 - [ ] **Step 1: Write failing integration tests**
 
-Assert one update advances robot, inspection and vehicles by the same clock delta; pausing freezes their snapshots, module interpolation delta and elapsed time; resuming advances from preserved phase/progress; a vehicle fault appears in the same returned snapshot's alarm list; toggling module explosion changes `module.exploded` and `visiblePartIds` without mutating unrelated simulation state. Assert unknown vehicle and part IDs throw a `RangeError` from their command methods instead of silently succeeding.
+Assert one update advances robot, inspection and vehicles by the same clock delta; pausing freezes their snapshots, module interpolation delta and elapsed time; resuming advances from preserved phase/progress; `productionCount` starts at 128 and increments once per completed robot placement, not while paused; a vehicle fault appears in the same returned snapshot's alarm list; toggling module explosion changes `module.exploded` and `visiblePartIds` without mutating unrelated simulation state. Assert unknown vehicle and part IDs throw a `RangeError` from their command methods instead of silently succeeding.
 
 - [ ] **Step 2: Run the integration test and verify it fails**
 
@@ -301,7 +301,7 @@ Expected: FAIL because `SimulationEngine.ts` does not exist.
 
 - [ ] **Step 3: Implement engine, HUD bindings and render-loop wiring**
 
-`SimulationEngine` owns one `SimulationClock`, `RobotCycle`, `InspectionCycle` and `VehicleSystem`. `update` advances the clock once, updates every subsystem with that exact delta, and returns it as `snapshot.deltaSeconds`. In `main.ts`, feed the same snapshot to robot, detector, vehicle, module model controllers and HUD from one render callback; use `snapshot.deltaSeconds` for any interpolated module explosion so it freezes while paused. Reject unknown vehicle/part IDs with `RangeError`. Add controls for pause/resume, module layers and part visibility, named detail shots, tour start/stop, and a demo fault toggle; every control invokes the engine/controller API, not DOM-local state. Dispose subscriptions/listeners/renderers at page teardown.
+`SimulationEngine` owns one `SimulationClock`, `RobotCycle`, `InspectionCycle` and `VehicleSystem`. `update` advances the clock once, updates every subsystem with that exact delta, and returns it as `snapshot.deltaSeconds`; `productionCount` starts at 128 and increases once for each completed robot placement. In `main.ts`, feed the same snapshot to robot, detector, vehicle, module model controllers and HUD from one render callback; use `snapshot.deltaSeconds` for any interpolated module explosion so it freezes while paused. Reject unknown vehicle/part IDs with `RangeError`. Add controls for pause/resume, module layers and part visibility, named detail shots, tour start/stop, and a demo fault toggle; every control invokes the engine/controller API, not DOM-local state. Dispose subscriptions/listeners/renderers at page teardown.
 
 - [ ] **Step 4: Verify integration tests and all project checks**
 
